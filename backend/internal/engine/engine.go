@@ -2,7 +2,6 @@ package engine
 
 import (
 	"battle-game/internal/battle"
-	"fmt"
 	"math"
 	"math/rand"
 )
@@ -80,14 +79,6 @@ func (e *Engine) Run() {
 			TargetHP: target.HP,
 			Dead:     dead,
 		})
-
-		fmt.Printf(
-			"[%.2f] %s -> %s  (-%d)\n",
-			e.battle.Time,
-			attacker.Name,
-			target.Name,
-			attacker.Attack,
-		)
 
 		// 下一次攻击
 		attacker.NextAttack += 1 / attacker.Speed

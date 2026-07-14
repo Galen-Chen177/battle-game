@@ -3,15 +3,15 @@ package battle
 import "fmt"
 
 type Unit struct {
-	ID         uint
-	Name       string
-	HP         int
-	MaxHP      int
-	Attack     int
-	Speed      float64
-	NextAttack float64
-	Camp       int // 0: Left 1: Right
-	Alive      bool
+	ID         uint    `json:"id"`
+	Name       string  `json:"name"`
+	HP         int     `json:"hp"`
+	MaxHP      int     `json:"maxHp"`
+	Attack     int     `json:"attack"`
+	Speed      float64 `json:"speed"`
+	NextAttack float64 `json:"nextAttack"`
+	Camp       int     `json:"camp"` // 0: Left 1: Right
+	Alive      bool    `json:"alive"`
 }
 
 type Team struct {
@@ -20,17 +20,12 @@ type Team struct {
 }
 
 type Event struct {
-	Time float64
-
-	From string
-
-	To string
-
-	Damage int
-
-	TargetHP int
-
-	Dead bool
+	Time     float64 `json:"time"`
+	From     string  `json:"from"`
+	To       string  `json:"to"`
+	Damage   int     `json:"damage"`
+	TargetHP int     `json:"targetHp"`
+	Dead     bool    `json:"dead"`
 }
 
 func (t *Team) AliveCount() int {
