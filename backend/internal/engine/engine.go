@@ -6,13 +6,29 @@ import (
 	"math/rand"
 )
 
+// 优先攻击选项
+type PriorityAttackOptions uint
+
+const (
+	// 随机攻击
+	PriorityAttackRandom PriorityAttackOptions = 0
+	// 优先攻击 maxHP 最多的
+	PriorityAttackMaxHP PriorityAttackOptions = 1
+	// 优先攻击当前 HP 最多的
+	PriorityAttackHP PriorityAttackOptions = 2
+	// 优先攻击当前 HP 最少的
+	PriorityAttackMinHP PriorityAttackOptions = 3
+)
+
 type Engine struct {
-	battle *battle.Battle
+	battle                *battle.Battle
+	priorityAttackOptions PriorityAttackOptions
 }
 
-func New(b *battle.Battle) *Engine {
+func New(b *battle.Battle, opts PriorityAttackOptions) *Engine {
 	return &Engine{
-		battle: b,
+		battle:                b,
+		priorityAttackOptions: opts,
 	}
 }
 
@@ -52,7 +68,7 @@ func (e *Engine) Run() {
 		e.battle.Time = attacker.NextAttack
 
 		// 找敌人
-		target := e.randomTarget(attacker.Camp)
+		target := e.pickTarget(attacker.Camp)
 
 		if target == nil {
 			return
@@ -111,7 +127,8 @@ func (e *Engine) nextActor() *battle.Unit {
 	return actor
 }
 
-func (e *Engine) randomTarget(camp int) *battle.Unit {
+// pickTarget 根据优先级选出攻击的目标
+func (e *Engine) pickTarget(camp int) *battle.Unit {
 
 	var enemies []*battle.Unit
 
@@ -124,7 +141,6 @@ func (e *Engine) randomTarget(camp int) *battle.Unit {
 	var alive []*battle.Unit
 
 	for _, u := range enemies {
-
 		if u.Alive {
 			alive = append(alive, u)
 		}
@@ -134,5 +150,47 @@ func (e *Engine) randomTarget(camp int) *battle.Unit {
 		return nil
 	}
 
-	return alive[rand.Intn(len(alive))]
+	// 敌军默认随机
+	if camp == 1 {
+		return alive[rand.Intn(len(alive))]
+	}
+
+	// 我方根据选择来
+	switch e.priorityAttackOptions {
+	case PriorityAttackMaxHP:
+		target := alive[0]
+		best := alive[0].MaxHP
+		for _, u := range alive[1:] {
+			if u.MaxHP > best {
+				best = u.MaxHP
+				target = u
+			}
+		}
+		return target
+
+	case PriorityAttackHP:
+		target := alive[0]
+		best := alive[0].HP
+		for _, u := range alive[1:] {
+			if u.HP > best {
+				best = u.HP
+				target = u
+			}
+		}
+		return target
+
+	case PriorityAttackMinHP:
+		target := alive[0]
+		best := alive[0].HP
+		for _, u := range alive[1:] {
+			if u.HP < best {
+				best = u.HP
+				target = u
+			}
+		}
+		return target
+
+	default:
+		return alive[rand.Intn(len(alive))]
+	}
 }

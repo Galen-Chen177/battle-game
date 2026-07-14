@@ -45,7 +45,6 @@ CLI
 Battle Engine 不关心：
 
 * React
-* Gin
 * WebSocket
 * 数据库
 * UI
@@ -66,15 +65,17 @@ Battle Engine 不关心：
 
 * 3v3 自动战斗
 * 每个角色拥有基础属性
-
   * HP
   * Attack
   * Speed
 * 根据 Speed 决定攻击频率
-* 随机攻击存活敌人
+* 优先攻击策略（随机 / maxHP 最多 / 当前 HP 最多 / 当前 HP 最少）
+* 敌方默认随机攻击，我方可选优先策略
 * 角色死亡后退出战斗
 * 战斗结束判定
 * 每一次攻击都会生成 Event
+* HTTP API：`POST /battle/start`（Gin 框架）
+* 前端演示页面：战斗动画、伤害数字、计时器、变速播放
 
 目前还没有：
 
@@ -86,7 +87,6 @@ Battle Engine 不关心：
 * 治疗
 * 宠物
 * 装备
-* AI
 * 属性克制
 
 这些都会在后续版本逐步加入。
@@ -96,14 +96,27 @@ Battle Engine 不关心：
 # 当前目录
 
 ```
-backend/
-├── cmd/
-│   └── server/
-│       └── main.go
-├── internal/
-│   ├── battle/
-│   └── engine/
-└── go.mod
+battle-game/
+├── README.md
+├── CLAUDE.md
+├── docs/
+│   └── 决策设计01.md            # 设计决策：事件驱动架构
+├── backend/
+│   ├── cmd/
+│   │   └── main.go              # 入口：Gin HTTP 服务 (:8080)
+│   ├── internal/
+│   │   ├── battle/
+│   │   │   ├── battle.go        # Battle 结构体、NewBattle()、NewDemoBattle()
+│   │   │   ├── model.go         # Unit、Team、Event 领域类型
+│   │   │   └── battle_test.go   # Demo 战斗测试
+│   │   ├── engine/
+│   │   │   └── engine.go        # Engine 模拟循环、优先攻击目标选择
+│   │   └── handler/
+│   │       └── battle.go        # POST /battle/start handler
+│   ├── go.mod
+│   └── go.sum
+└── frontend/
+    └── index.html               # 战斗演示页面（浏览器直接打开）
 ```
 
 ---
@@ -126,33 +139,43 @@ Battle Engine 只有一个职责：
 
 以后：
 
-普通攻击
-
-↓
-
-治疗
-
-↓
-
-Buff
-
-↓
-
-召唤
-
-↓
-
-反击
-
-↓
-
-中毒
+普通攻击 → 治疗 → Buff → 召唤 → 反击 → 中毒
 
 全部都会转换成 Event。
 
-因此：
+因此：任何前端都可以直接播放 Event。
 
-任何前端都可以直接播放 Event。
+---
+
+# 运行方式
+
+**启动后端：**
+
+```bash
+cd backend
+go run ./cmd/
+# 服务运行在 http://localhost:8080
+```
+
+**打开前端：**
+
+浏览器直接打开 `frontend/index.html`，点击"开始战斗"即可。
+
+**API 调用示例：**
+
+```bash
+curl -X POST http://localhost:8080/battle/start \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "units": [
+      {"name":"Hero","hp":100,"maxHp":100,"attack":15,"speed":2.0,"camp":0},
+      {"name":"Monster","hp":80,"maxHp":80,"attack":10,"speed":1.5,"camp":1}
+    ],
+    "priorityAttackOptions": 0
+  }'
+```
+
+`priorityAttackOptions`：`0`=随机，`1`=优先 maxHP 最多，`2`=优先当前 HP 最多，`3`=优先当前 HP 最少。
 
 ---
 
@@ -167,6 +190,9 @@ Buff
 * [x] Speed 调度
 * [x] Event
 * [x] 战斗结束
+* [x] HTTP API
+* [x] 优先攻击策略
+* [x] 前端演示页面
 
 ---
 
@@ -182,9 +208,7 @@ Buff
 * [ ] 战斗统计
 * [ ] MVP 输出
 
-目标：
-
-让 Battle Engine 不只是能战斗，还能输出完整战斗结果。
+目标：让 Battle Engine 不只是能战斗，还能输出完整战斗结果。
 
 ---
 
@@ -217,9 +241,7 @@ Buff
 * [ ] 群体技能
 * [ ] 技能 Event
 
-目标：
-
-第一次拥有真正意义上的技能。
+目标：第一次拥有真正意义上的技能。
 
 ---
 
@@ -262,7 +284,6 @@ AI
 计划加入：
 
 * [ ] 优先攻击后排
-* [ ] 优先攻击血量最低
 * [ ] 仇恨系统
 * [ ] 技能释放策略
 
@@ -322,13 +343,7 @@ Battle Engine 将支持完整回放。
 
 Battle Engine 希望最终成为一个可以独立维护的 Go 战斗框架。
 
-未来支持：
-
-* CLI
-* Web
-* Unity
-* Godot
-* 桌面客户端
+未来支持：CLI / Web / Unity / Godot / 桌面客户端。
 
 任何前端都可以直接复用 Battle Engine。
 

@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battle Engine Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a2e;
+    color: #eee;
+    font-family: "Microsoft YaHei", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .container {
+    width: 720px;
+  }
+
+  h1 {
+    text-align: center;
+    margin-bottom: 16px;
+    font-size: 22px;
+    color: #e0c070;
+  }
+
+  /* 战斗区域 + 计时器 */
+  .arena-wrapper {
+    position: relative;
+  }
+
+  .arena {
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 12px;
+    padding: 24px 16px;
+    min-height: 340px;
+  }
+
+  .battle-timer {
+    position: absolute;
+    bottom: -26px;
+    right: 4px;
+    font-size: 14px;
+    color: #aaa;
+    font-family: "Consolas", "Courier New", monospace;
+  }
+
+  .camp-label {
+    font-size: 13px;
+    margin-bottom: 8px;
+    text-align: center;
+    letter-spacing: 2px;
+  }
+
+  .enemy-label { color: #e74c3c; }
+  .ally-label  { color: #5dade2; }
+
+  .row {
+    display: flex;
+    justify-content: space-around;
+    gap: 12px;
+  }
+
+  .divider {
+    text-align: center;
+    color: #555;
+    font-size: 20px;
+    margin: 14px 0;
+    letter-spacing: 4px;
+  }
+
+  /* 单位卡片 */
+  .unit-card {
+    width: 140px;
+    background: #1e2d4a;
+    border: 2px solid #2a4a7f;
+    border-radius: 10px;
+    padding: 12px 10px 10px;
+    text-align: center;
+    position: relative;
+    transition: transform 0.2s ease-in-out, border-color 0.3s, opacity 0.5s;
+    z-index: 1;
+  }
+
+  .unit-card.camp-1 { border-color: #c0392b; }
+  .unit-card.camp-0 { border-color: #2980b9; }
+
+  .unit-card .name {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+
+  .unit-card .hp-text {
+    font-size: 11px;
+    color: #aaa;
+    margin-bottom: 4px;
+  }
+
+  /* 血条 */
+  .hp-bar-outer {
+    height: 10px;
+    background: #333;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .hp-bar-inner {
+    height: 100%;
+    background: #27ae60;
+    border-radius: 5px;
+    transition: width 0.4s ease-out, background 0.4s;
+  }
+
+  .hp-bar-inner.low  { background: #e67e22; }
+  .hp-bar-inner.crit { background: #e74c3c; }
+
+  /* 死亡 */
+  .unit-card.dead {
+    opacity: 0.35;
+    border-color: #555 !important;
+  }
+
+  .unit-card.dead .hp-bar-inner {
+    background: #555 !important;
+  }
+
+  .unit-card .skull {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 36px;
+    pointer-events: none;
+  }
+
+  .unit-card.dead .skull {
+    display: block;
+  }
+
+  /* 攻击冲刺动画 */
+  .unit-card.dashing {
+    z-index: 10;
+    transition: transform 0.15s ease-in;
+  }
+
+  .unit-card.returning {
+    z-index: 10;
+    transition: transform 0.25s ease-out;
+  }
+
+  /* 受伤闪烁 */
+  .unit-card.hit {
+    animation: hit-flash 0.3s;
+  }
+
+  @keyframes hit-flash {
+    0%   { background: #e74c3c; }
+    100% { background: #1e2d4a; }
+  }
+
+  /* 伤害数字 */
+  .damage-pop {
+    position: absolute;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 22px;
+    font-weight: bold;
+    color: #e74c3c;
+    pointer-events: none;
+    z-index: 20;
+    animation: pop-up 0.8s ease-out forwards;
+  }
+
+  @keyframes pop-up {
+    0%   { opacity: 1; transform: translateY(0); }
+    40%  { opacity: 1; transform: translateY(-20px); }
+    100% { opacity: 0; transform: translateY(-50px); }
+  }
+
+  /* 操作区 */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    justify-content: center;
+  }
+
+  .btn {
+    padding: 10px 32px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .btn-start {
+    background: #e67e22;
+    color: #fff;
+  }
+
+  .btn-start:hover  { background: #d35400; }
+  .btn-start:disabled { background: #555; cursor: not-allowed; }
+
+  .speed-label {
+    font-size: 13px;
+    color: #888;
+    margin-left: 8px;
+  }
+
+  .priority-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .priority-label {
+    font-size: 13px;
+    color: #ccc;
+    white-space: nowrap;
+  }
+
+  .priority-select {
+    padding: 6px 10px;
+    font-size: 13px;
+    background: #2a2a4a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .speed-select {
+    padding: 6px 10px;
+    font-size: 13px;
+    background: #2a2a4a;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  /* 日志 */
+  .log {
+    margin-top: 14px;
+    background: #111;
+    border-radius: 8px;
+    padding: 10px 14px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 12px;
+    font-family: "Consolas", "Courier New", monospace;
+    line-height: 1.8;
+  }
+
+  .log .entry {
+    padding: 2px 0;
+  }
+
+  .log .entry.dead-log {
+    color: #e74c3c;
+  }
+
+  /* 结果弹窗 — 胜利 */
+  .result-overlay {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 14px;
+    padding: 30px 50px;
+    z-index: 100;
+    text-align: center;
+    font-size: 24px;
+    font-weight: bold;
+  }
+
+  .result-overlay.show { display: block; }
+
+  .result-overlay.win {
+    background: #1a2e1a;
+    border: 2px solid #e0c070;
+    color: #e0c070;
+  }
+
+  .result-overlay.lose {
+    background: #2e1a1a;
+    border: 2px solid #e74c3c;
+    color: #e74c3c;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>⚔️ Battle Engine Demo</h1>
+
+  <!-- 战斗区域 + 计时器 -->
+  <div class="arena-wrapper">
+    <div class="arena" id="arena">
+      <!-- 敌军 (上方) -->
+      <div class="camp-label enemy-label">👹 敌军</div>
+      <div class="row" id="row-camp1"></div>
+
+      <div class="divider">⚡ VS ⚡</div>
+
+      <!-- 我方 (下方) -->
+      <div class="camp-label ally-label">🛡️ 我方</div>
+      <div class="row" id="row-camp0"></div>
+    </div>
+    <div class="battle-timer" id="timer">时间: 0.00s</div>
+  </div>
+
+  <!-- 操作区 -->
+  <div class="controls">
+    <div class="priority-wrap">
+      <span class="priority-label">优先攻击:</span>
+      <select class="priority-select" id="priority">
+        <option value="0" selected>🎲 随机</option>
+        <option value="1">💪 优先攻击 maxHP 最多的</option>
+        <option value="2">❤️ 优先攻击当前 HP 最多的</option>
+        <option value="3">🗡️ 优先攻击当前 HP 最少的</option>
+      </select>
+    </div>
+    <button class="btn btn-start" id="btn-start" onclick="startBattle()">⚔️ 开始战斗</button>
+    <span class="speed-label">速度:</span>
+    <select class="speed-select" id="speed">
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
+      <option value="4">4x</option>
+    </select>
+  </div>
+
+  <!-- 日志 -->
+  <div class="log" id="log">
+    <div style="color:#888;">等待开始...</div>
+  </div>
+
+  <!-- 结果 -->
+  <div class="result-overlay" id="result"></div>
+</div>
+
+<script>
+// ==================== Demo 数据 ====================
+const DEMO_UNITS = [
+  // Camp 1 — 上方（敌军）
+  { id: 101, name: "哥布林A", hp: 90,  maxHp: 90,  attack: 10, speed: 1.8, camp: 1 },
+  { id: 102, name: "哥布林B", hp: 90,  maxHp: 90,  attack: 10, speed: 1.8, camp: 1 },
+  { id: 103, name: "狼王",   hp: 150, maxHp: 150, attack: 18, speed: 1.0, camp: 1 },
+  // Camp 0 — 下方（我方）
+  { id: 1,   name: "张三",   hp: 100, maxHp: 100, attack: 13, speed: 2.0, camp: 0 },
+  { id: 2,   name: "李四",   hp: 120, maxHp: 120, attack: 12, speed: 1.5, camp: 0 },
+  { id: 3,   name: "小火龙", hp: 80,  maxHp: 80,  attack: 20, speed: 1.2, camp: 0 },
+];
+
+const API = "http://localhost:8080/battle/start";
+
+// ==================== 初始化 ====================
+const hpMap = {}; // name -> { currentHP, maxHP }
+let timerInterval = null;
+let battleSeconds = 0;
+
+function buildCards() {
+  document.getElementById("row-camp1").innerHTML = "";
+  document.getElementById("row-camp0").innerHTML = "";
+
+  DEMO_UNITS.forEach(u => {
+    hpMap[u.name] = { currentHP: u.hp, maxHP: u.maxHp };
+
+    const card = document.createElement("div");
+    card.className = `unit-card camp-${u.camp}`;
+    card.dataset.name = u.name;
+    card.innerHTML = `
+      <div class="name">${u.name}</div>
+      <div class="hp-text">HP: <span class="hp-val">${u.hp}</span> / ${u.maxHp}</div>
+      <div class="hp-bar-outer">
+        <div class="hp-bar-inner" style="width:100%"></div>
+      </div>
+      <div class="skull">💀</div>
+    `;
+
+    const targetId = u.camp === 1 ? "row-camp1" : "row-camp0";
+    document.getElementById(targetId).appendChild(card);
+  });
+}
+
+buildCards();
+
+// ==================== 计时器 ====================
+function startTimer() {
+  battleSeconds = 0;
+  updateTimerDisplay();
+  timerInterval = setInterval(() => {
+    battleSeconds += 0.05;
+    updateTimerDisplay();
+  }, 50);
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+function updateTimerDisplay() {
+  document.getElementById("timer").textContent =
+    `时间: ${battleSeconds.toFixed(2)}s`;
+}
+
+// ==================== 战斗 ====================
+let playing = false;
+
+async function startBattle() {
+  if (playing) return;
+  playing = true;
+
+  const btn = document.getElementById("btn-start");
+  btn.disabled = true;
+  btn.textContent = "战斗进行中...";
+
+  // 重置状态
+  document.querySelectorAll(".unit-card").forEach(c => c.classList.remove("dead", "hit", "dashing", "returning"));
+  const overlay = document.getElementById("result");
+  overlay.classList.remove("show", "win", "lose");
+  document.getElementById("log").innerHTML = '<div style="color:#888;">战斗开始...</div>';
+  stopTimer();
+  battleSeconds = 0;
+  updateTimerDisplay();
+
+  // 重置血量
+  DEMO_UNITS.forEach(u => {
+    hpMap[u.name] = { currentHP: u.hp, maxHP: u.maxHp };
+  });
+  updateAllHPDisplay();
+
+  try {
+    const priority = parseInt(document.getElementById("priority").value);
+
+    const resp = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        units: DEMO_UNITS,
+        priorityAttackOptions: priority,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      addLog(`❌ 错误: ${err.error}`, true);
+      btn.disabled = false;
+      btn.textContent = "⚔️ 开始战斗";
+      playing = false;
+      return;
+    }
+
+    const events = await resp.json();
+    addLog(`📋 共 ${events.length} 个事件`, false);
+
+    // 开始计时
+    startTimer();
+
+    await playEvents(events);
+
+    // 停止计时
+    stopTimer();
+
+    // 结果
+    const camp0Alive = DEMO_UNITS.filter(u => u.camp === 0 && hpMap[u.name].currentHP > 0);
+    const camp1Alive = DEMO_UNITS.filter(u => u.camp === 1 && hpMap[u.name].currentHP > 0);
+
+    let winner = "", cls = "";
+    if (camp0Alive.length > 0 && camp1Alive.length === 0) {
+      winner = "🎉 我方 胜利！";
+      cls = "win";
+    } else if (camp1Alive.length > 0 && camp0Alive.length === 0) {
+      winner = "💀 敌方 胜利...";
+      cls = "lose";
+    } else {
+      winner = "⏰ 战斗超时";
+      cls = "";
+    }
+
+    overlay.textContent = winner;
+    overlay.className = "result-overlay show " + cls;
+    setTimeout(() => overlay.classList.remove("show"), 3000);
+
+    addLog(`🏆 ${winner}`, false);
+  } catch (e) {
+    stopTimer();
+    addLog(`❌ 网络错误: ${e.message}`, true);
+  }
+
+  btn.disabled = false;
+  btn.textContent = "⚔️ 开始战斗";
+  playing = false;
+}
+
+// ==================== 事件分组与播放 ====================
+function getCampByName(name) {
+  const u = DEMO_UNITS.find(u => u.name === name);
+  return u ? u.camp : -1;
+}
+
+// 将连续、同一时间、同一方的 event 分到一组（同时冲击）
+function groupEvents(events) {
+  const groups = [];
+  let i = 0;
+  while (i < events.length) {
+    const group = [events[i]];
+    const camp = getCampByName(events[i].from);
+    const time = events[i].time;
+    i++;
+    while (
+      i < events.length &&
+      events[i].time === time &&
+      getCampByName(events[i].from) === camp
+    ) {
+      group.push(events[i]);
+      i++;
+    }
+    groups.push(group);
+  }
+  return groups;
+}
+
+function getSpeed() {
+  return parseFloat(document.getElementById("speed").value);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function playEvents(events) {
+  const speed = getSpeed();
+  const baseDelay = 600;
+  const groups = groupEvents(events);
+
+  for (const group of groups) {
+    // 日志
+    for (const ev of group) {
+      addLog(
+        `[${ev.time.toFixed(2)}] ${ev.from} → ${ev.to}  -${ev.damage}${ev.dead ? " 💀" : ""}`,
+        ev.dead
+      );
+    }
+
+    // 同组事件同时执行动画
+    await Promise.all(group.map(ev => animateAttack(ev)));
+
+    // 动画完成后统一更新血量
+    for (const ev of group) {
+      if (hpMap[ev.to]) {
+        hpMap[ev.to].currentHP = ev.targetHp;
+        updateHPDisplay(ev.to);
+        if (ev.dead) {
+          markDead(ev.to);
+        }
+      }
+    }
+
+    await sleep(baseDelay / speed);
+  }
+}
+
+// ==================== 攻击动画 ====================
+async function animateAttack(ev) {
+  const fromCard = document.querySelector(`.unit-card[data-name="${ev.from}"]`);
+  const toCard = document.querySelector(`.unit-card[data-name="${ev.to}"]`);
+
+  if (!fromCard || !toCard) return;
+
+  const fromRect = fromCard.getBoundingClientRect();
+  const toRect = toCard.getBoundingClientRect();
+
+  // 计算偏移（向目标移动约 55%）
+  const dx = (toRect.left + toRect.width / 2) - (fromRect.left + fromRect.width / 2);
+  const dy = (toRect.top + toRect.height / 2) - (fromRect.top + fromRect.height / 2);
+  const tx = dx * 0.55;
+  const ty = dy * 0.55;
+
+  // 冲刺
+  fromCard.classList.add("dashing");
+  fromCard.style.transform = `translate(${tx}px, ${ty}px)`;
+
+  await sleep(160);
+
+  // 伤害数字
+  showDamage(toCard, ev.damage);
+
+  // 目标闪烁
+  toCard.classList.add("hit");
+  setTimeout(() => toCard.classList.remove("hit"), 300);
+
+  // 返回
+  fromCard.classList.remove("dashing");
+  fromCard.classList.add("returning");
+  fromCard.style.transform = "translate(0, 0)";
+
+  await sleep(260);
+  fromCard.classList.remove("returning");
+}
+
+function showDamage(card, dmg) {
+  // 统计当前卡上已有的伤害数字，错开位置避免重叠
+  const existing = card.querySelectorAll(".damage-pop").length;
+
+  const pop = document.createElement("span");
+  pop.className = "damage-pop";
+  pop.textContent = `-${dmg}`;
+  pop.style.top = (8 + existing * 26) + "px";
+  card.appendChild(pop);
+
+  setTimeout(() => pop.remove(), 800);
+}
+
+// ==================== UI 更新 ====================
+function updateHPDisplay(name) {
+  const data = hpMap[name];
+  if (!data) return;
+
+  const card = document.querySelector(`.unit-card[data-name="${name}"]`);
+  if (!card) return;
+
+  const hpVal = card.querySelector(".hp-val");
+  if (hpVal) hpVal.textContent = data.currentHP;
+
+  const pct = Math.max(0, (data.currentHP / data.maxHP) * 100);
+  const bar = card.querySelector(".hp-bar-inner");
+  if (bar) {
+    bar.style.width = pct + "%";
+    bar.classList.remove("low", "crit");
+    if (pct <= 25) bar.classList.add("crit");
+    else if (pct <= 50) bar.classList.add("low");
+  }
+}
+
+function updateAllHPDisplay() {
+  DEMO_UNITS.forEach(u => updateHPDisplay(u.name));
+}
+
+function markDead(name) {
+  const card = document.querySelector(`.unit-card[data-name="${name}"]`);
+  if (card) card.classList.add("dead");
+}
+
+function addLog(msg, highlight) {
+  const log = document.getElementById("log");
+  const div = document.createElement("div");
+  div.className = "entry" + (highlight ? " dead-log" : "");
+  div.textContent = msg;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+
+  const placeholder = log.querySelector('div[style]');
+  if (placeholder) placeholder.remove();
+}
+</script>
+
+</body>
+</html>

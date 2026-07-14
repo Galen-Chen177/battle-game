@@ -9,18 +9,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func StartBattle(c *gin.Context) {
-	var units []battle.Unit
+type BattleRequest struct {
+	Units                 []battle.Unit `json:"units"`
+	PriorityAttackOptions int           `json:"priorityAttackOptions"`
+}
 
-	if err := c.ShouldBindJSON(&units); err != nil {
+func StartBattle(c *gin.Context) {
+	var req BattleRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var leftUnits, rightUnits []*battle.Unit
 
-	for i := range units {
-		u := &units[i]
+	for i := range req.Units {
+		u := &req.Units[i]
 
 		// 校验 camp
 		if u.Camp != 0 && u.Camp != 1 {
@@ -50,7 +55,7 @@ func StartBattle(c *gin.Context) {
 	right := &battle.Team{Name: "Right", Units: rightUnits}
 
 	b := battle.NewBattle(left, right)
-	e := engine.New(b)
+	e := engine.New(b, engine.PriorityAttackOptions(req.PriorityAttackOptions))
 	e.Run()
 
 	c.JSON(http.StatusOK, b.Events)

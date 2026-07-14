@@ -13,13 +13,13 @@
 ## 常用命令
 
 ```bash
-# 运行战斗引擎（打印 3v3 演示战斗到 stdout）
+# 启动后端 HTTP 服务
 cd backend && go run ./cmd/
 
 # 编译
 cd backend && go build ./cmd/
 
-# 运行所有测试（目前还没有 _test.go 文件）
+# 运行所有测试
 cd backend && go test ./...
 
 # 运行单个包的测试
@@ -27,7 +27,7 @@ cd backend && go test ./internal/battle/
 cd backend && go test ./internal/engine/
 
 # 运行单个测试函数
-cd backend && go test ./internal/battle/ -run TestName
+cd backend && go test ./internal/battle/ -run TestNewDemoBattle
 
 # 整理依赖
 cd backend && go mod tidy
@@ -37,42 +37,73 @@ cd backend && go mod tidy
 
 ```
 backend/
-  cmd/main.go           → 入口：构建演示战斗，运行引擎，打印事件
+  cmd/main.go             → 入口：Gin HTTP 服务，监听 :8080
   internal/
-    battle/             → 领域类型（Unit, Team, Event, Battle）—— 纯数据，无逻辑
-    engine/             → 模拟循环（Engine.Run）—— 读取状态，产出 Event
+    battle/               → 领域类型（Unit, Team, Event, Battle）—— 纯数据，无逻辑
+    engine/               → 模拟循环（Engine.Run）—— 读取状态，产出 Event
+    handler/              → HTTP handler（POST /battle/start）
+frontend/
+  index.html              → 战斗演示页面（纯 HTML，浏览器直接打开）
 ```
 
 **各包职责：**
 
 - **`battle`** — 领域模型。
-  - `Unit`：ID、Name、HP、MaxHP、Attack、Speed（攻击频率，次/秒）、NextAttack（下次行动时间）、Camp（0=左方 1=右方）、Alive
+  - `Unit`：ID、Name、HP、MaxHP、Attack、Speed（攻击频率，次/秒）、NextAttack（下次行动时间）、Camp（0=我方 1=敌军）、Alive。所有字段有 JSON tag（驼峰）。
   - `Team`：队伍名 + 单位指针切片，方法 `AliveCount() int`
-  - `Event`：Time、From、To、Damage、TargetHP、Dead，方法 `String() string` 用于格式化输出
+  - `Event`：Time、From、To、Damage、TargetHP、Dead，方法 `String() string`
   - `Battle`：Left/Right 两个队伍、当前 Time、累积的 Events 切片
-  - `NewDemoBattle()`：硬编码 3v3 场景（张三/李四/小火龙 vs 哥布林A/哥布林B/狼王）
+  - `NewBattle(left, right)`：通用构造函数
+  - `NewDemoBattle()`：硬编码 3v3 场景，已移至 `battle_test.go`
 
-- **`engine`** — 核心模拟循环，`Engine.Run()`：
-  1. 初始化所有单位的 `NextAttack = 1/Speed`（速度越快，首次行动越早）
-  2. 进入循环：找出 `NextAttack` 最小的存活单位 → 推进时间 → 从敌方阵营随机选一个存活目标 → 造成伤害 → 记录 Event → 为该攻击者安排下一次行动时间（`NextAttack += 1/Speed`）
-  3. 任一方全部死亡 或 `Time >= 999`（硬编码超时保护，后续会改为可配置）时结束
+- **`engine`** — 核心模拟循环。
+  - `Engine.Run()`：初始化 NextAttack → 循环找最小 NextAttack 的存活单位 → 调 `pickTarget()` 选目标 → 造成伤害 → 记录 Event → 安排下次行动。任一方全灭或 `Time >= 999` 时结束。
+  - `pickTarget(camp)`：**Camp 1（敌军）始终随机攻击**；Camp 0（我方）根据 `PriorityAttackOptions` 选择目标。
+  - `PriorityAttackOptions`：`0`=随机，`1`=优先 maxHP 最多，`2`=优先当前 HP 最多，`3`=优先当前 HP 最少。
 
-**数据流：** `Battle 状态 → Engine.Run() → []Event → 消费方（CLI，未来 React/Unity/Godot）`
+- **`handler`** — HTTP 层。
+  - `POST /battle/start`：入参 `{units: [...], priorityAttackOptions: 0}`，按 Camp 拆队 → 构建 Battle → 跑引擎 → 返回 `[]Event`。
+  - 自动校验 camp 值、双方非空、归一化 Alive/MaxHP。
+
+**数据流：** `HTTP JSON → Handler 拆队 → Battle 状态 → Engine.Run() → []Event → JSON 响应 → 前端播放`
 
 ## 设计原则
 
 项目采用**事件驱动架构**，战斗逻辑与表现层严格分离：
 
 1. **引擎只负责计算** — 它不是游戏，是确定性模拟器。整场战斗在几毫秒内完成，不使用 Sleep/Tick/Timer。
-2. **Event 是唯一输出** — 所有动作（攻击、死亡、未来的治疗/Buff/召唤）都产出 Event。消费方按自己的节奏回放（1 倍速、2 倍速、跳过、回退），无需重新计算。
-3. **引擎与前端无关** — 不引入 React、Gin、WebSocket、Unity 或任何 UI 库。同一引擎应能服务于 CLI、Web 和游戏引擎。
-4. **Event 后续会升级为接口** — 当前是单一结构体，后续改为 `type Event interface { Time() float64; Type() string }`，再派生出 `AttackEvent`、`HealEvent`、`DeadEvent`、`BuffAddEvent` 等。
-5. **所有规则逐步配置化** — 当前硬编码的演示单位和 `999` 超时都是临时的，后续版本通过 JSON 配置文件来定义单位、技能、怪物和 Buff（见 v0.8）。
-6. **超时是正常结果，不是异常** — 无法结束的战斗（如治疗超过伤害）会产出 `BattleTimeoutEvent` 并返回有效的 `BattleResult`，不应报错。
+2. **Event 是唯一输出** — 所有动作都产出 Event。消费方按自己的节奏回放（1 倍速、2 倍速、跳过、回退），无需重新计算。
+3. **引擎与前端无关** — 引擎本身不引入 Gin、React 或任何 UI 库。Gin 只在 handler 层和 main.go 中使用，引擎包不依赖 HTTP。
+4. **Event 后续会升级为接口** — 当前是单一结构体，后续改为 `type Event interface { Time() float64; Type() string }`，派生出 `AttackEvent`、`HealEvent` 等。
+5. **所有规则逐步配置化** — 当前硬编码的演示单位和 `999` 超时都是临时的，后续版本通过 JSON 配置文件来定义。
+6. **超时是正常结果，不是异常** — 无法结束的战斗会产出 `BattleTimeoutEvent` 并返回有效的 `BattleResult`。
+
+## API
+
+### POST /battle/start
+
+```json
+// 请求
+{
+  "units": [
+    {"id":1,"name":"Hero","hp":100,"maxHp":100,"attack":15,"speed":2.0,"camp":0},
+    {"id":2,"name":"Monster","hp":80,"maxHp":80,"attack":10,"speed":1.5,"camp":1}
+  ],
+  "priorityAttackOptions": 0
+}
+
+// 响应 — []Event
+[
+  {"time":0.50,"from":"Hero","to":"Monster","damage":15,"targetHp":65,"dead":false},
+  ...
+]
+```
+
+`priorityAttackOptions`：`0`=随机，`1`=优先 maxHP 最多，`2`=优先当前 HP 最多，`3`=优先当前 HP 最少。
 
 ## 版本路线图
 
-当前处于 **v0.1**（基础 3v3 自动战斗）。后续规划：
+当前处于 **v0.1**（基础 3v3 自动战斗 + HTTP API + 前端演示）。后续规划：
 
 | 版本 | 主题 | 核心内容 |
 |------|------|----------|

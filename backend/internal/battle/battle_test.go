@@ -36,7 +36,7 @@ func TestNewDemoBattle(t *testing.T) {
 	}
 
 	// 跑战斗
-	e := engine.New(b)
+	e := engine.New(b, engine.PriorityAttackRandom)
 	e.Run()
 
 	// 至少有一方全灭 或 超时
