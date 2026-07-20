@@ -6,7 +6,7 @@ import (
 	"math/rand"
 )
 
-// 优先攻击选项
+// PriorityAttackOptions 优先攻击选项
 type PriorityAttackOptions uint
 
 const (
@@ -74,8 +74,27 @@ func (e *Engine) Run() {
 			return
 		}
 
-		// 攻击
-		target.HP -= attacker.Attack
+		// 计算伤害
+
+		damageType := battle.NormalDamage
+		damage := attacker.Attack
+
+		// 是否命中
+		if attacker.HitRate-target.EvasionRate > 0 &&
+			attacker.HitRate-target.EvasionRate-rand.Intn(100) > 0 {
+			// 是否暴击
+			if attacker.CriticalHitRate-target.AntiViolenceRate > 0 &&
+				(attacker.CriticalHitRate-target.AntiViolenceRate)-rand.Intn(100) > 0 {
+				// 暴击伤害
+				damage = attacker.Attack * attacker.CriticalHitDamage / 100
+				damageType = battle.CriticalDamage
+			}
+		} else {
+			damage = 0
+			damageType = battle.EvasionDamage
+		}
+
+		target.HP -= damage
 
 		dead := false
 
@@ -88,12 +107,13 @@ func (e *Engine) Run() {
 
 		// 记录事件
 		e.battle.Events = append(e.battle.Events, battle.Event{
-			Time:     e.battle.Time,
-			From:     attacker.Name,
-			To:       target.Name,
-			Damage:   attacker.Attack,
-			TargetHP: target.HP,
-			Dead:     dead,
+			Time:       e.battle.Time,
+			From:       attacker.Name,
+			To:         target.Name,
+			Damage:     damage,
+			TargetHP:   target.HP,
+			Dead:       dead,
+			DamageType: damageType,
 		})
 
 		// 下一次攻击
